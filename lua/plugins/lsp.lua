@@ -1,138 +1,71 @@
 return {
+  -- Mason: installs LSP servers, linters, formatters
+  {
+    "mason-org/mason.nvim",
+    opts = {},
+  },
+
+  -- Bridges mason <-> lspconfig
+  {
+    "mason-org/mason-lspconfig.nvim",
+    dependencies = { "mason-org/mason.nvim" },
+    opts = {
+      -- List servers to auto-install here, e.g.:
+      -- ensure_installed = { "lua_ls", "ts_ls", "pyright" },
+    },
+  },
+
+  -- LSP config
+  {
     "neovim/nvim-lspconfig",
     dependencies = {
-        "stevearc/conform.nvim",
-        "williamboman/mason.nvim",
-        "williamboman/mason-lspconfig.nvim",
-        "hrsh7th/cmp-nvim-lsp",
-        "hrsh7th/cmp-buffer",
-        "hrsh7th/cmp-path",
-        "hrsh7th/cmp-cmdline",
-        "hrsh7th/nvim-cmp",
-        "L3MON4D3/LuaSnip",
-        "saadparwaiz1/cmp_luasnip",
-        "j-hui/fidget.nvim",
+      "mason-org/mason.nvim",
+      "mason-org/mason-lspconfig.nvim",
+      "saghen/blink.cmp", -- so capabilities are set up before LSP attaches
     },
-
     config = function()
-        require("conform").setup({
-            formatters_by_ft = {
-            }
-        })
-        local cmp = require('cmp')
-        local cmp_lsp = require("cmp_nvim_lsp")
-        local capabilities = vim.tbl_deep_extend(
-            "force",
-            {},
-            vim.lsp.protocol.make_client_capabilities(),
-            cmp_lsp.default_capabilities())
+      -- Feed blink.cmp capabilities into every LSP server
+      local capabilities = require("blink.cmp").get_lsp_capabilities()
 
-        require("fidget").setup({})
-        require("mason").setup()
-        require("mason-lspconfig").setup({
-            ensure_installed = {
-                "lua_ls",
-                "rust_analyzer",
-                "gopls",
-                "vtsls",
-                "tailwindcss",
-            },
-            handlers = {
-                function(server_name) -- default handler (optional)
-                    require("lspconfig")[server_name].setup {
-                        capabilities = capabilities
-                    }
-                end,
+      -- Keymaps that apply when any LSP attaches to a buffer
+      vim.api.nvim_create_autocmd("LspAttach", {
+        desc = "LSP keymaps",
+        callback = function(event)
+          local map = function(keys, func, desc)
+            vim.keymap.set("n", keys, func, { buffer = event.buf, desc = "LSP: " .. desc })
+          end
 
-                zls = function()
-                    local lspconfig = require("lspconfig")
-                    lspconfig.zls.setup({
-                        root_dir = lspconfig.util.root_pattern(".git", "build.zig", "zls.json"),
-                        settings = {
-                            zls = {
-                                enable_inlay_hints = true,
-                                enable_snippets = true,
-                                warn_style = true,
-                            },
-                        },
-                    })
-                    vim.g.zig_fmt_parse_errors = 0
-                    vim.g.zig_fmt_autosave = 0
+          map("gd",         vim.lsp.buf.definition,      "Go to Definition")
+          map("gD",         vim.lsp.buf.declaration,     "Go to Declaration")
+          map("gi",         vim.lsp.buf.implementation,  "Go to Implementation")
+          map("gr",         vim.lsp.buf.references,      "Go to References")
+          map("go",         vim.lsp.buf.type_definition, "Go to Type Definition")
+          map("K",          vim.lsp.buf.hover,           "Hover Docs")
+          map("<C-k>",      vim.lsp.buf.signature_help,  "Signature Help")
+          map("<leader>rn", vim.lsp.buf.rename,          "Rename Symbol")
+          map("<leader>ca", vim.lsp.buf.code_action,     "Code Action")
+          map("<leader>d",  vim.diagnostic.open_float,   "Show Diagnostics")
+          map("[d",         vim.diagnostic.goto_prev,    "Prev Diagnostic")
+          map("]d",         vim.diagnostic.goto_next,    "Next Diagnostic")
+        end,
+      })
 
-                end,
-                ["lua_ls"] = function()
-                    local lspconfig = require("lspconfig")
+      -- Configure your servers here
+      local lspconfig = require("lspconfig")
 
-                    lspconfig.lua_ls.setup {
-                        capabilities = capabilities,
-                        settings = {
-                            Lua = {
-                                runtime = {
-                                    version = 'LuaJIT',
-                                },
-                                diagnostics = {
-                                    globals = { 'vim' },
-                                },
-                                workspace = {
-                                    library = vim.api.nvim_get_runtime_file("", true),
-                                    checkThirdParty = false,
-                                },
-                                format = {
-                                    enable = true,
-                                    -- Put format options here
-                                    -- NOTE: the value should be STRING!!
-                                    defaultConfig = {
-                                        indent_style = "space",
-                                        indent_size = "2",
-                                    }
-                                },
-                            }
-                        }
-                    }
-                end,
-                ["tailwindcss"] = function()
-                    local lspconfig = require("lspconfig")
-                    lspconfig.tailwindcss.setup({
-                        capabilities = capabilities,
-                        filetypes = { "html", "css", "scss", "javascript", "javascriptreact", "typescript", "typescriptreact", "vue", "svelte", "heex" },
-                    })
-                end,
-            }
-        })
+      -- Example: Lua
+      lspconfig.lua_ls.setup({
+        capabilities = capabilities,
+        settings = {
+          Lua = { completion = { callSnippet = "Replace" } },
+        },
+      })
 
-        local cmp_select = { behavior = cmp.SelectBehavior.Select }
+      -- Example: TypeScript/JavaScript
+      -- lspconfig.ts_ls.setup({ capabilities = capabilities })
 
-        cmp.setup({
-            snippet = {
-                expand = function(args)
-                    require('luasnip').lsp_expand(args.body) -- For `luasnip` users.
-                end,
-            },
-            mapping = cmp.mapping.preset.insert({
-                ['<C-p>'] = cmp.mapping.select_prev_item(cmp_select),
-                ['<C-n>'] = cmp.mapping.select_next_item(cmp_select),
-                ['<C-y>'] = cmp.mapping.confirm({ select = true }),
-                ["<C-Space>"] = cmp.mapping.complete(),
-            }),
-            sources = cmp.config.sources({
-                { name = "copilot", group_index = 2 },
-                { name = 'nvim_lsp' },
-                { name = 'luasnip' }, -- For luasnip users.
-            }, {
-                { name = 'buffer' },
-            })
-        })
-
-        vim.diagnostic.config({
-            -- update_in_insert = true,
-            float = {
-                focusable = false,
-                style = "minimal",
-                border = "rounded",
-                source = "always",
-                header = "",
-                prefix = "",
-            },
-        })
-    end
+      -- Example: Python
+      -- lspconfig.pyright.setup({ capabilities = capabilities })
+    end,
+  },
 }

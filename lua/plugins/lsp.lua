@@ -29,6 +29,8 @@ return {
         require("fidget").setup({})
         require("mason").setup()
 
+        vim.keymap.set("n", "<leader>f", vim.lsp.buf.format)
+
         -- Set capabilities globally for all servers
         vim.lsp.config("*", { capabilities = capabilities })
 
